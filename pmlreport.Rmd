@@ -1,0 +1,135 @@
+---
+title: "Prediction of Manner of Weight Lifting Exercises"
+author: "Kun Yao"
+date: "05/21/2015"
+output: html_document
+---
+
+**Summary**
+
+In this report we develop practical machine learning algorithms to qualify how well people do weight lifting exercises, based on sensor data from accelerometers on the belt, forearm, arm, and dumbbell. An estimate of error rate for the fitted algorithms will also be given.
+
+**Data**
+
+We first load the necessary library and raw data (courtesy of <http://groupware.les.inf.puc-rio.br/har>) into R.
+```{r}
+library(ggplot2)
+library(caret)
+rawData <- read.csv("pml-training.csv")
+```
+
+There are total 160 columns in the raw data. 36 columns are the raw data collected from the four sensors which detect three-axes acceleration, gyroscope  and  magnetometer. Also the 3 calculated Euler angles for each sensor should be important. Most of the remaining columns are the various statistics (total/average/variance etc) of the above data, which also contain many NA's. We leave only the total acceleration columns, which always contain valid data. The final dataset that will be used for our prediction is
+```{r}
+newData <- rawData[grepl("_[xyz]$|^total|^roll|^pitch|^yaw|classe", names(rawData))]
+```
+
+Here we pick the Euler angles on two sensors (belt and dumbbell) and plot them with the classe variable, it looks like that certain clustering does exist. Machine learning should be able to help us identifying the patterns.
+
+```{r, echo=FALSE}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+p1 <- qplot(roll_belt, pitch_belt, color=classe, data=newData)
+p2 <- qplot(roll_belt, yaw_belt, color=classe, data=newData)
+p3 <- qplot(roll_dumbbell, pitch_dumbbell, color=classe, data=newData)
+p4 <- qplot(roll_dumbbell, yaw_dumbbell, color=classe, data=newData)
+multiplot(p1, p2, p3, p4, cols=2)
+```
+
+In order to cross-validate several prediction models and estimate out-of-sample 
+error, we further split the training set into two subsets.
+```{r}
+set.seed(0)
+inTrain <- createDataPartition(newData$classe, p=0.7, list=FALSE)
+training <- newData[inTrain,]
+testing <- newData[-inTrain,]
+```
+
+
+**Prediction with Classification Model**
+
+Both random forest and boosting models are among the most popular machine learning techniques. Here we will build and test two models, random forest (rf) and stochastic gradient boosting (gbm), using R's default train control method.
+
+```{r}
+library(randomForest)
+rfFit <- train(classe~., method="rf", data=training)
+print(rfFit)
+library(gbm)
+boostFit <- train(classe~., method="gbm", data=training, verbose=FALSE)
+print(boostFit)
+```
+
+As we can see, with optimal tuning of both models, they archived good accuracy (0.989 for random forest versus 0.955 for boosting). It is also worth noting that the tuning in random forest model does not help too much, the three mtry values (2, 27 and 52) all result in accuracy higher than 97%. We can now apply them to predict out testing sets for cross-validation.
+
+```{r}
+table(predict(rfFit, testing), testing$classe)
+sum(predict(rfFit, testing) == testing$classe) / length(testing$classe)
+table(predict(boostFit, testing), testing$classe)
+sum(predict(boostFit, testing) == testing$classe) / length(testing$classe)
+```
+
+Both models show a higher accuracy rate than obtained during the training process. And if we choose random forest algorithm, we can estimate the out-of-sample error rate to be 1-0.993373=0.67%. This is probably an optimistic estimate due to overfitting by hand picking the better fitted model from two classification models.
+
+We also examine the predictor importance for our fitted random forest model, as shown in the following variance important plot. The top three predictors are roll_belt, pitch_forearm and yaw_belt.
+
+```{r, echo=FALSE}
+varImpPlot(rfFit$finalModel)
+```
+
+In the next plot we also visually checked our prediction on the testing set against the roll_betl and pitch_forearm predictors. The false predictions appears to be rather randomly distributed, except that maybe a bit more concentration in the high pitch_forearm regime (> 75).
+
+```{r}
+predRight <- predict(rfFit, testing)==testing$classe
+qplot(roll_belt, pitch_forearm, color=predRight, data=testing, main="testing predictions")
+```
+
+**Conclusion**
+
+We studied the prediction of manner of weight lifting exercises via two machine learning algorithms, random forest and boosting. Random forest model yields an excellent estimated error rate of only 0.67%. It is also prone to overfitting of mtry parameter. We will choose our random forest algorith to predict on real testing.
+
+```{r}
+testData <- read.csv("pml-testing.csv")
+answers <- predict(rfFit, testData)
+```
