@@ -127,7 +127,7 @@ qplot(roll_belt, pitch_forearm, color=predRight, data=testing, main="testing pre
 
 **Conclusion**
 
-We studied the prediction of manner of weight lifting exercises via two machine learning algorithms, random forest and boosting. Random forest model yields an excellent estimated error rate of only 0.67%. It is also prone to overfitting of mtry parameter. We will choose our random forest algorith to predict on real testing.
+We studied the prediction of manner of weight lifting exercises via two machine learning algorithms, random forest and boosting. Random forest model yields an excellent estimated error rate of only 0.67%. It is not very sensitive to overfitting of mtry parameter. We will choose our random forest algorith to predict on real testing.
 
 ```{r}
 testData <- read.csv("pml-testing.csv")
